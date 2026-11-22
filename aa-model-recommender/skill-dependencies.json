@@ -1,0 +1,106 @@
+{
+  "schema_version": "1",
+  "capabilities": [
+    "实时抓取AA榜单",
+    "联网搜索补充榜单",
+    "逐模块排序推荐",
+    "输出格式与可靠性标注"
+  ],
+  "dependencies": [
+    {
+      "id": "aa-data-sources",
+      "type": "network",
+      "required": true,
+      "auth_type": "none",
+      "capabilities": [
+        "实时抓取AA榜单",
+        "联网搜索补充榜单"
+      ],
+      "checks": [
+        {
+          "id": "python-runtime",
+          "type": "python",
+          "required": true,
+          "min_version": "3.9"
+        }
+      ],
+      "setup": {
+        "official_home_url": "https://artificialanalysis.ai",
+        "official_docs_url": "https://artificialanalysis.ai/about",
+        "steps": [
+          "确认当前环境提供网页抓取(打开 URL 读页面文本)与联网搜索(按关键词检索)两种工具;本技能通过 harness 自带工具访问公开榜单,不需要 API Key 或账号登录。",
+          "联网可达性不在预检阶段探测:榜单站多为本机代理或平台出口相关,本地脚本探测境外站会误判。能否抓到榜以 Step 4 的实际抓取结果为准,任一源可达即可,多源互为备份。",
+          "运行 scripts/check_environment.py 只确认运行时环境(Python);无法运行脚本时按 SKILL.md Step 0 的静态判断继续。"
+        ],
+        "verify": "python -X utf8 <技能根目录>/scripts/check_environment.py --capability 实时抓取AA榜单 --capability 联网搜索补充榜单",
+        "security": "只访问公开榜单页面,不提交任何凭据;抓取结果仅用于模型选型对比;不读取本地私密文件。",
+        "verified_at": "2026-11-22",
+        "applies_to_version": "1.1.0"
+      },
+      "degradation": [
+        {
+          "capability": "实时抓取AA榜单",
+          "trigger": "网页抓取工具不可用,或实际抓取时所有数据源均失败/超时(不靠预检探测判断)",
+          "fallback": "按 fetch-guide.md 第四节情形 A 换源重试;抓取工具连不上时先用 scripts/fetch_page_text.py 在本机读取(先 --proxy auto,再 --proxy none);仍失败则请用户在浏览器打开页面并贴出表格,再不行则告知无法取得实时排名,按用户优先级给保守的定性建议,不指定精确 Top3",
+          "user_input": "用户可粘贴已获取的榜单文本供分析",
+          "limitations": "未验证数据不能冒充实时排名;分数与名次标注为未验证或省略",
+          "evidence_label": "未验证",
+          "recovery": "网络或工具恢复后直接重新抓取验证,不依赖预检结果",
+          "stop_condition": "核心正确性依赖实时数据且用户未提供可信数据时,停止给排名结论"
+        },
+        {
+          "capability": "联网搜索补充榜单",
+          "trigger": "联网搜索工具不可用,或外部榜搜索返回空结果",
+          "fallback": "降级到 fetch-guide.md 第四节情形 B 的第一级(自检 SKILL 榜单清单);无合格外部榜时按置信度门槛给保守建议",
+          "user_input": "用户可提供候选榜单名称或来源链接",
+          "limitations": "低置信榜不得进入 Top3;无法交叉验证时明确标注单一来源",
+          "evidence_label": "未验证",
+          "recovery": "搜索工具恢复后重走情形 B 第二、三级并过置信度门槛",
+          "stop_condition": "找不到达到置信门槛的榜单时,如实告知并停止拼凑 Top3"
+        }
+      ]
+    }
+  ],
+  "functional_degradations": [
+    {
+      "capability": "实时抓取AA榜单",
+      "trigger": "抓取工具不可用或实际抓取时所有源失败",
+      "fallback": "换源重试;抓取工具连不上时在本机用 scripts/fetch_page_text.py 读取;仍失败请用户贴表格;再失败给定性保守建议,不指定精确名次",
+      "user_input": "可粘贴榜单文本",
+      "limitations": "无实时数据时排名标注未验证或省略",
+      "evidence_label": "未验证",
+      "recovery": "环境恢复后直接重抓验证",
+      "stop_condition": "要求实时精确排名但无可信数据时停止"
+    },
+    {
+      "capability": "联网搜索补充榜单",
+      "trigger": "搜索工具不可用或外部榜搜索无结果",
+      "fallback": "退回自检 SKILL 清单;无合格榜按置信度门槛处理",
+      "user_input": "可提供候选榜名称或链接",
+      "limitations": "低置信榜不进 Top3,单一来源需标注",
+      "evidence_label": "未验证",
+      "recovery": "搜索恢复后重走情形 B 分级",
+      "stop_condition": "无达标榜实时告知,不拼凑 Top3"
+    },
+    {
+      "capability": "逐模块排序推荐",
+      "trigger": "抓取到的分数/价格/速度字段不完整",
+      "fallback": "只用有证据的字段排序,缺失字段在对比表填 —",
+      "user_input": "无需补充",
+      "limitations": "排序依据减少,结论精度下降,需标注缺口",
+      "evidence_label": "部分验证",
+      "recovery": "字段补齐后重新排序",
+      "stop_condition": "关键字段(分数)缺失导致无法排序时停止该模块推荐"
+    },
+    {
+      "capability": "输出格式与可靠性标注",
+      "trigger": "降级或低置信来源进入结果",
+      "fallback": "按 output-format.md 第六节披露降级级别、置信度与局限",
+      "user_input": "无需补充",
+      "limitations": "结果带限制标注,不能当确定性结论",
+      "evidence_label": "部分验证",
+      "recovery": "来源恢复置信后去掉限制标注",
+      "stop_condition": "无"
+    }
+  ]
+}
